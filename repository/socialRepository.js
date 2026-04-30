@@ -190,19 +190,20 @@ async function createPost(userId, content) {
   });
 }
 
-// delete 
+// delete (also removes dependent likes and comments to satisfy FK constraints)
 async function deletePost(id, userId) {
-  const post = await prisma.post.findUnique({
-    where: { id: Number(id) },
-  });
+  const postId = Number(id);
+  const post = await prisma.post.findUnique({ where: { id: postId } });
 
   if (!post || post.userId !== Number(userId)) {
     throw new Error("Post not found or unauthorized");
   }
 
-  return prisma.post.delete({
-    where: { id: Number(id) },
-  });
+  return prisma.$transaction([
+    prisma.like.deleteMany({ where: { postId } }),
+    prisma.comment.deleteMany({ where: { postId } }),
+    prisma.post.delete({ where: { id: postId } }),
+  ]);
 }
 
 //  COMMENTS
