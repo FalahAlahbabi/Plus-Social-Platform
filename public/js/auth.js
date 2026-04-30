@@ -3,20 +3,10 @@ const loginForm = document.getElementById("loginForm");
 const passwordInput = document.getElementById("signupPassword");
 const passwordStrengthEl = document.getElementById("passwordStrength");
 
-function getUsers() {
-    const users = localStorage.getItem("users");
-    return users ? JSON.parse(users) : [];
-}
-
-function saveUsers(users) {
-    localStorage.setItem("users", JSON.stringify(users));
-}
-
 function saveCurrentUser(user) {
     localStorage.setItem("currentUser", JSON.stringify(user));
 }
 
-// Password Strength 
 function getPasswordStrength(password) {
     let score = 0;
     if (password.length >= 8) score++;
@@ -38,82 +28,102 @@ if (passwordInput && passwordStrengthEl) {
             passwordStrengthEl.className = "password-strength";
             return;
         }
+
         const result = getPasswordStrength(val);
         passwordStrengthEl.textContent = "Strength: " + result.label;
         passwordStrengthEl.className = "password-strength " + result.cls;
     });
 }
 
-//  Sign Up
 if (signupForm) {
-    signupForm.addEventListener("submit", function (event) {
+    signupForm.addEventListener("submit", async function (event) {
         event.preventDefault();
 
         const username = document.getElementById("signupUsername").value.trim();
-        const email    = document.getElementById("signupEmail").value.trim();
+        const email = document.getElementById("signupEmail").value.trim();
         const password = document.getElementById("signupPassword").value.trim();
-        const bio      = document.getElementById("signupBio").value.trim();
+        const bio = document.getElementById("signupBio").value.trim();
 
         const selectedAvatarInput = document.querySelector('input[name="profilePicture"]:checked');
-        const selectedAvatar = selectedAvatarInput
+        const profilePicture = selectedAvatarInput
             ? selectedAvatarInput.value
-            : "assets/images/default-avatar.png";
-
-        const users = getUsers();
-
-        if (users.find(u => u.email === email)) {
-            alert("This email is already registered.");
-            return;
-        }
-
-        if (users.find(u => u.username === username)) {
-            alert("This username is already taken.");
-            return;
-        }
+            : "/assets/images/default-avatar.png";
 
         const strength = getPasswordStrength(password);
         if (strength.cls === "strength-weak") {
-            if (!confirm("Your password is weak. It's recommended to use at least 8 characters, an uppercase letter, a number, and a symbol.\n\nContinue anyway?")) {
+            const continueWeak = confirm(
+                "Your password is weak. It's better to use at least 8 characters, one uppercase letter, one number, and one symbol.\n\nDo you want to continue anyway?"
+            );
+
+            if (!continueWeak) {
                 return;
             }
         }
 
-        const newUser = {
-            id: Date.now(),
-            username,
-            email,
-            password,
-            bio,
-            profilePicture: selectedAvatar,
-            following: []
-        };
+        try {
+            const response = await fetch("/api/auth/signup", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    username,
+                    email,
+                    password,
+                    bio,
+                    profilePicture,
+                }),
+            });
 
-        users.push(newUser);
-        saveUsers(users);
+            const data = await response.json();
 
-        alert("Account created successfully!");
-        window.location.href = "login.html";
+            if (!response.ok) {
+                alert(data.error || "Could not create account.");
+                return;
+            }
+
+            alert("Account created successfully!");
+            window.location.href = "/Html/login.html";
+        } catch (error) {
+            console.error("Signup error:", error);
+            alert("Something went wrong while creating the account.");
+        }
     });
 }
 
-// Login
 if (loginForm) {
-    loginForm.addEventListener("submit", function (event) {
+    loginForm.addEventListener("submit", async function (event) {
         event.preventDefault();
 
-        const email    = document.getElementById("loginEmail").value.trim();
+        const email = document.getElementById("loginEmail").value.trim();
         const password = document.getElementById("loginPassword").value.trim();
-        const users    = getUsers();
 
-        const foundUser = users.find(u => u.email === email && u.password === password);
+        try {
+            const response = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    email,
+                    password,
+                }),
+            });
 
-        if (!foundUser) {
-            alert("Invalid email or password.");
-            return;
+            const data = await response.json();
+
+            if (!response.ok) {
+                alert(data.error || "Invalid email or password.");
+                return;
+            }
+
+            saveCurrentUser(data);
+
+            alert("Login successful!");
+            window.location.href = "/Html/feed.html";
+        } catch (error) {
+            console.error("Login error:", error);
+            alert("Something went wrong while logging in.");
         }
-
-        saveCurrentUser(foundUser);
-        alert("Login successful!");
-        window.location.href = "feed.html";
     });
 }

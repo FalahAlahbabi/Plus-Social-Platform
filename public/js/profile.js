@@ -9,34 +9,92 @@ const myPostsContainer = document.getElementById("myPostsContainer");
 const profileLogoutBtn = document.getElementById("profileLogoutBtn");
 const savePictureBtn = document.getElementById("savePictureBtn");
 
+let allUsers = [];
+let myPosts = [];
+
 function getCurrentUser() {
     const currentUser = localStorage.getItem("currentUser");
     return currentUser ? JSON.parse(currentUser) : null;
 }
 
-function getUsers() {
-    const users = localStorage.getItem("users");
-    return users ? JSON.parse(users) : [];
+function saveCurrentUser(user) {
+    localStorage.setItem("currentUser", JSON.stringify(user));
 }
 
-function saveUsers(users) {
-    localStorage.setItem("users", JSON.stringify(users));
+async function fetchUsers() {
+    const response = await fetch("/api/users");
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error || "Failed to load users");
+    }
+
+    return data;
 }
 
-function getPosts() {
-    const posts = localStorage.getItem("posts");
-    return posts ? JSON.parse(posts) : [];
+async function fetchUserPosts(userId) {
+    const response = await fetch(`/api/users/${userId}/posts`);
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error || "Failed to load user posts");
+    }
+
+    return data;
+}
+
+async function updateBioRequest(userId, bio) {
+    const response = await fetch(`/api/users/${userId}`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            bio,
+        }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error || "Failed to update bio");
+    }
+
+    return data;
+}
+
+async function updatePictureRequest(userId, profilePicture) {
+    const response = await fetch(`/api/users/${userId}`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            profilePicture,
+        }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error || "Failed to update profile picture");
+    }
+
+    return data;
+}
+
+function formatPostTime(value) {
+    if (!value) return "";
+    return new Date(value).toLocaleString();
 }
 
 function renderProfile() {
     const currentUser = getCurrentUser();
 
     if (!currentUser) {
-        window.location.href = "login.html";
+        window.location.href = "/Html/login.html";
         return;
     }
-
-    const allUsers = getUsers();
 
     profileUsername.textContent = currentUser.username;
     profileEmail.textContent = currentUser.email;
@@ -44,14 +102,13 @@ function renderProfile() {
     bioInput.value = currentUser.bio ? currentUser.bio : "";
     profileImage.src = currentUser.profilePicture
         ? currentUser.profilePicture
-        : "assets/images/default-avatar.png";
+        : "/assets/images/default-avatar.png";
 
     if (profileStats) {
         const followingCount = (currentUser.following || []).length;
         const followersCount = allUsers.filter(function (user) {
-            return user.id !== currentUser.id &&
-                   user.following &&
-                   user.following.includes(currentUser.id);
+            const followingList = user.following || [];
+            return user.id !== currentUser.id && followingList.includes(currentUser.id);
         }).length;
 
         profileStats.innerHTML = `
@@ -74,7 +131,7 @@ function renderProfile() {
     }
 }
 
-function showFollowingList(currentUser, allUsers) {
+function showFollowingList(currentUser, users) {
     const followingIds = currentUser.following || [];
 
     if (followingIds.length === 0) {
@@ -83,7 +140,7 @@ function showFollowingList(currentUser, allUsers) {
     }
 
     const followingNames = followingIds.map(function (id) {
-        const user = allUsers.find(function (u) {
+        const user = users.find(function (u) {
             return u.id === id;
         });
 
@@ -95,20 +152,19 @@ function showFollowingList(currentUser, allUsers) {
 
 function renderMyPosts() {
     const currentUser = getCurrentUser();
-    const posts = getPosts();
 
     myPostsContainer.innerHTML = "";
 
-    const myPosts = posts.filter(function (post) {
+    const onlyMyPosts = myPosts.filter(function (post) {
         return post.userId === currentUser.id;
-    }).reverse();
+    });
 
-    if (myPosts.length === 0) {
+    if (onlyMyPosts.length === 0) {
         myPostsContainer.innerHTML = "<p>You have not created any posts yet.</p>";
         return;
     }
 
-    myPosts.forEach(function (post) {
+    onlyMyPosts.forEach(function (post) {
         const postCard = document.createElement("div");
         postCard.classList.add("post-card");
 
@@ -117,10 +173,12 @@ function renderMyPosts() {
 
         const time = document.createElement("div");
         time.classList.add("post-time");
-        time.textContent = post.timestamp;
+        time.textContent = formatPostTime(post.createdAt);
 
         const meta = document.createElement("p");
-        meta.textContent = "Likes: " + post.likes + " | Comments: " + (post.comments ? post.comments.length : 0);
+        meta.textContent =
+            "Likes: " + (post.likes ? post.likes.length : 0) +
+            " | Comments: " + (post.comments ? post.comments.length : 0);
 
         const detailsBtn = document.createElement("button");
         detailsBtn.classList.add("post-btn");
@@ -129,7 +187,7 @@ function renderMyPosts() {
 
         detailsBtn.addEventListener("click", function () {
             localStorage.setItem("selectedPostId", post.id);
-            window.location.href = "post.html";
+            window.location.href = "/Html/post.html";
         });
 
         postCard.appendChild(content);
@@ -142,31 +200,29 @@ function renderMyPosts() {
 }
 
 if (bioForm) {
-    bioForm.addEventListener("submit", function (event) {
+    bioForm.addEventListener("submit", async function (event) {
         event.preventDefault();
 
         const currentUser = getCurrentUser();
-        const users = getUsers();
         const newBio = bioInput.value.trim();
 
-        const updatedUsers = users.map(function (user) {
-            if (user.id === currentUser.id) {
-                user.bio = newBio;
-                currentUser.bio = newBio;
-            }
-            return user;
-        });
+        try {
+            const updatedUser = await updateBioRequest(currentUser.id, newBio);
 
-        saveUsers(updatedUsers);
-        localStorage.setItem("currentUser", JSON.stringify(currentUser));
+            updatedUser.following = currentUser.following || [];
+            saveCurrentUser(updatedUser);
 
-        renderProfile();
-        alert("Bio updated successfully!");
+            renderProfile();
+            alert("Bio updated successfully!");
+        } catch (error) {
+            console.error("Bio update error:", error);
+            alert("Could not update bio.");
+        }
     });
 }
 
 if (savePictureBtn) {
-    savePictureBtn.addEventListener("click", function () {
+    savePictureBtn.addEventListener("click", async function () {
         const selectedPictureInput = document.querySelector('input[name="editProfilePicture"]:checked');
 
         if (!selectedPictureInput) {
@@ -176,30 +232,61 @@ if (savePictureBtn) {
 
         const newPicture = selectedPictureInput.value;
         const currentUser = getCurrentUser();
-        const users = getUsers();
 
-        const updatedUsers = users.map(function (user) {
-            if (user.id === currentUser.id) {
-                user.profilePicture = newPicture;
-                currentUser.profilePicture = newPicture;
-            }
-            return user;
-        });
+        try {
+            const updatedUser = await updatePictureRequest(currentUser.id, newPicture);
 
-        saveUsers(updatedUsers);
-        localStorage.setItem("currentUser", JSON.stringify(currentUser));
+            updatedUser.following = currentUser.following || [];
+            saveCurrentUser(updatedUser);
 
-        renderProfile();
-        alert("Profile picture updated successfully!");
+            renderProfile();
+            alert("Profile picture updated successfully!");
+        } catch (error) {
+            console.error("Profile picture update error:", error);
+            alert("Could not update profile picture.");
+        }
     });
 }
 
 if (profileLogoutBtn) {
     profileLogoutBtn.addEventListener("click", function () {
         localStorage.removeItem("currentUser");
-        window.location.href = "login.html";
+        window.location.href = "/Html/login.html";
     });
 }
 
-renderProfile();
-renderMyPosts();
+async function loadProfileData() {
+    const currentUser = getCurrentUser();
+
+    if (!currentUser) {
+        window.location.href = "/Html/login.html";
+        return;
+    }
+
+    try {
+        const [users, posts] = await Promise.all([
+            fetchUsers(),
+            fetchUserPosts(currentUser.id),
+        ]);
+
+        allUsers = users;
+        myPosts = posts;
+
+        const freshCurrentUser = users.find(function (user) {
+            return user.id === currentUser.id;
+        });
+
+        if (freshCurrentUser) {
+            freshCurrentUser.following = currentUser.following || [];
+            saveCurrentUser(freshCurrentUser);
+        }
+
+        renderProfile();
+        renderMyPosts();
+    } catch (error) {
+        console.error("Profile loading error:", error);
+        myPostsContainer.innerHTML = "<p>Could not load profile data.</p>";
+    }
+}
+
+loadProfileData();
