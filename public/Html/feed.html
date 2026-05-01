@@ -15,6 +15,7 @@
         <nav class="nav-links">
             <a href="/Html/feed.html" class="nav-btn">Feed</a>
             <a href="/Html/profile.html" class="nav-btn">Profile</a>
+            <a href="/stats" class="nav-btn">Stats</a>
             <button id="logoutBtn" class="nav-btn signup-btn">Logout</button>
         </nav>
     </header>
@@ -35,7 +36,13 @@
             <form id="postForm">
                 <div class="form-group">
                     <label for="postContent">What would you like to share today?</label>
-                    <textarea id="postContent" name="postContent" rows="4" placeholder="Write your post here..." required></textarea>
+                    <textarea
+                        id="postContent"
+                        name="postContent"
+                        rows="4"
+                        placeholder="Write your post here..."
+                        required
+                    ></textarea>
                 </div>
 
                 <button type="submit" class="primary-btn">Post</button>
@@ -43,8 +50,13 @@
         </section>
 
         <section class="posts-section">
-            <h2>Recent Posts</h2>
-            <div id="postsContainer"></div>
+            <h2>Following Posts</h2>
+            <div id="followingPostsContainer"></div>
+        </section>
+
+        <section class="posts-section" style="margin-top: 30px;">
+            <h2>Explore Posts</h2>
+            <div id="explorePostsContainer"></div>
         </section>
     </main>
 

@@ -83,6 +83,20 @@ async function updatePictureRequest(userId, profilePicture) {
     return data;
 }
 
+async function deletePostRequest(postId, userId) {
+    const response = await fetch(`/api/posts/${postId}?userId=${userId}`, {
+        method: "DELETE",
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error || "Failed to delete post");
+    }
+
+    return data;
+}
+
 function formatPostTime(value) {
     if (!value) return "";
     return new Date(value).toLocaleString();
@@ -180,20 +194,46 @@ function renderMyPosts() {
             "Likes: " + (post.likes ? post.likes.length : 0) +
             " | Comments: " + (post.comments ? post.comments.length : 0);
 
+        const actions = document.createElement("div");
+        actions.classList.add("post-actions");
+        actions.style.marginTop = "10px";
+
         const detailsBtn = document.createElement("button");
         detailsBtn.classList.add("post-btn");
         detailsBtn.textContent = "View Details";
-        detailsBtn.style.marginTop = "10px";
 
         detailsBtn.addEventListener("click", function () {
             localStorage.setItem("selectedPostId", post.id);
             window.location.href = "/Html/post.html";
         });
 
+        const deleteBtn = document.createElement("button");
+        deleteBtn.classList.add("post-btn");
+        deleteBtn.textContent = "Delete Post";
+
+        deleteBtn.addEventListener("click", async function () {
+            const confirmDelete = confirm("Are you sure you want to delete this post?");
+
+            if (!confirmDelete) {
+                return;
+            }
+
+            try {
+                await deletePostRequest(post.id, currentUser.id);
+                await loadProfileData();
+            } catch (error) {
+                console.error("Delete post error:", error);
+                alert(error.message || "Could not delete post.");
+            }
+        });
+
+        actions.appendChild(detailsBtn);
+        actions.appendChild(deleteBtn);
+
         postCard.appendChild(content);
         postCard.appendChild(time);
         postCard.appendChild(meta);
-        postCard.appendChild(detailsBtn);
+        postCard.appendChild(actions);
 
         myPostsContainer.appendChild(postCard);
     });

@@ -1,18 +1,22 @@
-// like / unlike a post, plus a check endpoint for the heart icon state
+// like / unlike a post, plus a check endpoint for the button state
 import { NextResponse } from "next/server";
 import repo from "@/repository/socialRepository";
 
 export async function GET(request, { params }) {
   try {
-    const { id: postId } = await params;
+    const { id } = await params;
+    const postId = Number(id);
+
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
+    const userId = Number(searchParams.get("userId"));
+
     if (!userId) {
       return NextResponse.json(
         { error: "userId query parameter is required" },
         { status: 400 }
       );
     }
+
     const liked = await repo.isLiked(userId, postId);
     return NextResponse.json({ liked });
   } catch (err) {
@@ -25,25 +29,37 @@ export async function GET(request, { params }) {
 
 export async function POST(request, { params }) {
   try {
-    const { id: postId } = await params;
+    const { id } = await params;
+    const postId = Number(id);
+
     const { userId } = await request.json();
-    if (!userId) {
+    const numericUserId = Number(userId);
+
+    if (!numericUserId) {
       return NextResponse.json(
         { error: "userId is required" },
         { status: 400 }
       );
     }
-    const like = await repo.addLike(userId, postId);
-    return NextResponse.json(like, { status: 201 });
-  } catch (err) {
-    if (err?.code === "P2002") {
+
+    const alreadyLiked = await repo.isLiked(numericUserId, postId);
+
+    if (alreadyLiked) {
+      await repo.removeLike(numericUserId, postId);
       return NextResponse.json(
-        { error: "Already liked" },
-        { status: 409 }
+        { success: true, liked: false, message: "Like removed" },
+        { status: 200 }
       );
     }
+
+    const like = await repo.addLike(numericUserId, postId);
     return NextResponse.json(
-      { error: err?.message ?? "Failed to like post" },
+      { success: true, liked: true, like },
+      { status: 201 }
+    );
+  } catch (err) {
+    return NextResponse.json(
+      { error: err?.message ?? "Failed to toggle like post" },
       { status: 500 }
     );
   }
@@ -51,17 +67,21 @@ export async function POST(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
-    const { id: postId } = await params;
+    const { id } = await params;
+    const postId = Number(id);
+
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
+    const userId = Number(searchParams.get("userId"));
+
     if (!userId) {
       return NextResponse.json(
         { error: "userId query parameter is required" },
         { status: 400 }
       );
     }
+
     await repo.removeLike(userId, postId);
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, liked: false });
   } catch (err) {
     return NextResponse.json(
       { error: err?.message ?? "Failed to unlike post" },

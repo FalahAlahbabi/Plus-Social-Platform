@@ -33,11 +33,11 @@ async function main() {
       profilePicture: "/assets/images/avatar3.png",
     },
     {
-      username: "mujahid",
+      username: "Dr.mucahid",
       email: "mujahid@example.com",
       password: "123456",
       bio: "Checking projects and progress.",
-      profilePicture: "/assets/images/avatar4.png",
+      profilePicture: "/assets/images/avatar3.png",
     },
     {
       username: "sara",

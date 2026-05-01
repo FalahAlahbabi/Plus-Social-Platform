@@ -4,15 +4,19 @@ import repo from "@/repository/socialRepository";
 
 export async function GET(request, { params }) {
   try {
-    const { id: followingId } = await params;
+    const { id } = await params;
+    const followingId = Number(id);
+
     const { searchParams } = new URL(request.url);
-    const followerId = searchParams.get("followerId");
+    const followerId = Number(searchParams.get("followerId"));
+
     if (!followerId) {
       return NextResponse.json(
         { error: "followerId query parameter is required" },
         { status: 400 }
       );
     }
+
     const following = await repo.isFollowing(followerId, followingId);
     return NextResponse.json({ following });
   } catch (err) {
@@ -25,31 +29,47 @@ export async function GET(request, { params }) {
 
 export async function POST(request, { params }) {
   try {
-    const { id: followingId } = await params;
+    const { id } = await params;
+    const followingId = Number(id);
+
     const { followerId } = await request.json();
-    if (!followerId) {
+    const numericFollowerId = Number(followerId);
+
+    if (!numericFollowerId) {
       return NextResponse.json(
         { error: "followerId is required" },
         { status: 400 }
       );
     }
-    if (Number(followerId) === Number(followingId)) {
+
+    if (numericFollowerId === followingId) {
       return NextResponse.json(
         { error: "Cannot follow yourself" },
         { status: 400 }
       );
     }
-    const follow = await repo.followUser(followerId, followingId);
-    return NextResponse.json(follow, { status: 201 });
-  } catch (err) {
-    if (err?.code === "P2002") {
+
+    const alreadyFollowing = await repo.isFollowing(
+      numericFollowerId,
+      followingId
+    );
+
+    if (alreadyFollowing) {
+      await repo.unfollowUser(numericFollowerId, followingId);
       return NextResponse.json(
-        { error: "Already following" },
-        { status: 409 }
+        { success: true, following: false, message: "Unfollowed successfully" },
+        { status: 200 }
       );
     }
+
+    const follow = await repo.followUser(numericFollowerId, followingId);
     return NextResponse.json(
-      { error: err?.message ?? "Failed to follow user" },
+      { success: true, following: true, follow },
+      { status: 201 }
+    );
+  } catch (err) {
+    return NextResponse.json(
+      { error: err?.message ?? "Failed to toggle follow user" },
       { status: 500 }
     );
   }
@@ -57,17 +77,21 @@ export async function POST(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
-    const { id: followingId } = await params;
+    const { id } = await params;
+    const followingId = Number(id);
+
     const { searchParams } = new URL(request.url);
-    const followerId = searchParams.get("followerId");
+    const followerId = Number(searchParams.get("followerId"));
+
     if (!followerId) {
       return NextResponse.json(
         { error: "followerId query parameter is required" },
         { status: 400 }
       );
     }
+
     await repo.unfollowUser(followerId, followingId);
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, following: false });
   } catch (err) {
     return NextResponse.json(
       { error: err?.message ?? "Failed to unfollow user" },

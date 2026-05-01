@@ -1,12 +1,15 @@
 const welcomeMessage = document.getElementById("welcomeMessage");
 const postForm = document.getElementById("postForm");
 const postContent = document.getElementById("postContent");
-const postsContainer = document.getElementById("postsContainer");
 const logoutBtn = document.getElementById("logoutBtn");
 const usersContainer = document.getElementById("usersContainer");
+const followingPostsContainer = document.getElementById("followingPostsContainer");
+const explorePostsContainer = document.getElementById("explorePostsContainer");
 
 let allUsers = [];
-let feedPosts = [];
+let allPosts = [];
+let followingPosts = [];
+let explorePosts = [];
 
 function getCurrentUser() {
     const currentUser = localStorage.getItem("currentUser");
@@ -28,7 +31,7 @@ async function fetchUsers() {
     return data;
 }
 
-async function fetchFeedPosts(userId) {
+async function fetchPosts(userId) {
     const response = await fetch(`/api/posts?userId=${userId}`);
     const data = await response.json();
 
@@ -73,11 +76,11 @@ async function toggleFollowRequest(targetUserId, followerId) {
 
     const data = await response.json();
 
-    if (!response.ok && response.status !== 409) {
+    if (!response.ok) {
         throw new Error(data.error || "Failed to update follow status");
     }
 
-    return { status: response.status, data };
+    return data;
 }
 
 async function toggleLikeRequest(postId, userId) {
@@ -122,14 +125,8 @@ async function addCommentRequest(postId, userId, text) {
 }
 
 async function deletePostRequest(postId, userId) {
-    const response = await fetch(`/api/posts/${postId}`, {
+    const response = await fetch(`/api/posts/${postId}?userId=${userId}`, {
         method: "DELETE",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            userId,
-        }),
     });
 
     const data = await response.json();
@@ -144,6 +141,19 @@ async function deletePostRequest(postId, userId) {
 function formatPostTime(value) {
     if (!value) return "";
     return new Date(value).toLocaleString();
+}
+
+function splitPostsForFeed() {
+    const currentUser = getCurrentUser();
+    const followingIds = currentUser.following || [];
+
+    followingPosts = allPosts.filter(function (post) {
+        return post.userId === currentUser.id || followingIds.includes(post.userId);
+    });
+
+    explorePosts = allPosts.filter(function (post) {
+        return post.userId !== currentUser.id && !followingIds.includes(post.userId);
+    });
 }
 
 function getFollowersCount(userId) {
@@ -246,17 +256,17 @@ function renderUsers(searchText = "") {
     });
 }
 
-function renderPosts() {
+function renderPostsList(posts, container, emptyMessage) {
     const currentUser = getCurrentUser();
 
-    postsContainer.innerHTML = "";
+    container.innerHTML = "";
 
-    if (!feedPosts || feedPosts.length === 0) {
-        postsContainer.innerHTML = "<p>No posts yet.</p>";
+    if (!posts || posts.length === 0) {
+        container.innerHTML = `<p>${emptyMessage}</p>`;
         return;
     }
 
-    feedPosts.forEach(function (post) {
+    posts.forEach(function (post) {
         const postCard = document.createElement("div");
         postCard.classList.add("post-card");
 
@@ -300,14 +310,20 @@ function renderPosts() {
         const likesList = post.likes || [];
         const likeCount = likesList.length;
         const alreadyLiked = likesList.some(function (like) {
-            return like.userId === currentUser.id;
+            return Number(like.userId) === Number(currentUser.id);
         });
 
         const likeButton = document.createElement("button");
         likeButton.classList.add("post-btn");
         likeButton.textContent = `${alreadyLiked ? "Unlike" : "Like"} (${likeCount})`;
         likeButton.addEventListener("click", async function () {
-            await toggleLike(post.id);
+            try {
+                await toggleLikeRequest(post.id, currentUser.id);
+                await loadFeedData();
+            } catch (error) {
+                console.error("Like error:", error);
+                alert(error.message || "Could not update like status.");
+            }
         });
 
         const detailsButton = document.createElement("button");
@@ -343,18 +359,11 @@ function renderPosts() {
             post.comments.forEach(function (comment) {
                 const commentItem = document.createElement("div");
                 commentItem.classList.add("comment-item");
-
-                const commentText = document.createElement("span");
-                commentText.innerHTML = `<strong>${comment.user.username}:</strong> ${comment.text}`;
-
-                commentItem.appendChild(commentText);
+                commentItem.innerHTML = `<strong>${comment.user?.username || "User"}:</strong> ${comment.text}`;
                 commentsSection.appendChild(commentItem);
             });
         } else {
-            const noComments = document.createElement("p");
-            noComments.classList.add("no-comments");
-            noComments.textContent = "No comments yet.";
-            commentsSection.appendChild(noComments);
+            commentsSection.innerHTML += "<p>No comments yet.</p>";
         }
 
         const commentForm = document.createElement("form");
@@ -376,7 +385,20 @@ function renderPosts() {
 
         commentForm.addEventListener("submit", async function (event) {
             event.preventDefault();
-            await addComment(post.id, commentInput.value.trim());
+
+            const text = commentInput.value.trim();
+
+            if (!text) {
+                return;
+            }
+
+            try {
+                await addCommentRequest(post.id, currentUser.id, text);
+                await loadFeedData();
+            } catch (error) {
+                console.error("Comment error:", error);
+                alert(error.message || "Could not add comment.");
+            }
         });
 
         postCard.appendChild(postHeader);
@@ -386,8 +408,22 @@ function renderPosts() {
         postCard.appendChild(commentsSection);
         postCard.appendChild(commentForm);
 
-        postsContainer.appendChild(postCard);
+        container.appendChild(postCard);
     });
+}
+
+function renderFeedSections() {
+    renderPostsList(
+        followingPosts,
+        followingPostsContainer,
+        "No posts from users you follow yet."
+    );
+
+    renderPostsList(
+        explorePosts,
+        explorePostsContainer,
+        "No explore posts available."
+    );
 }
 
 async function toggleFollow(targetUserId) {
@@ -396,40 +432,22 @@ async function toggleFollow(targetUserId) {
     try {
         const result = await toggleFollowRequest(targetUserId, currentUser.id);
 
-        if (result.status === 409) {
+        if (result.following) {
+            const followingList = currentUser.following || [];
+            if (!followingList.includes(targetUserId)) {
+                currentUser.following = [...followingList, targetUserId];
+            }
+        } else {
             currentUser.following = (currentUser.following || []).filter(function (id) {
                 return id !== targetUserId;
             });
-        } else {
-            const followingList = currentUser.following || [];
-            const alreadyFollowing = followingList.includes(targetUserId);
-
-            if (alreadyFollowing) {
-                currentUser.following = followingList.filter(function (id) {
-                    return id !== targetUserId;
-                });
-            } else {
-                currentUser.following = [...followingList, targetUserId];
-            }
         }
 
         saveCurrentUser(currentUser);
         await loadFeedData();
     } catch (error) {
         console.error("Follow error:", error);
-        alert("Could not update follow status.");
-    }
-}
-
-async function toggleLike(postId) {
-    const currentUser = getCurrentUser();
-
-    try {
-        await toggleLikeRequest(postId, currentUser.id);
-        await loadFeedData();
-    } catch (error) {
-        console.error("Like error:", error);
-        alert("Could not update like.");
+        alert(error.message || "Could not update follow status.");
     }
 }
 
@@ -446,23 +464,7 @@ async function deletePost(postId) {
         await loadFeedData();
     } catch (error) {
         console.error("Delete post error:", error);
-        alert("Could not delete post.");
-    }
-}
-
-async function addComment(postId, commentText) {
-    const currentUser = getCurrentUser();
-
-    if (!commentText) {
-        return;
-    }
-
-    try {
-        await addCommentRequest(postId, currentUser.id, commentText);
-        await loadFeedData();
-    } catch (error) {
-        console.error("Comment error:", error);
-        alert("Could not add comment.");
+        alert(error.message || "Could not delete post.");
     }
 }
 
@@ -490,7 +492,7 @@ if (postForm) {
             await loadFeedData();
         } catch (error) {
             console.error("Create post error:", error);
-            alert("Could not create post.");
+            alert(error.message || "Could not create post.");
         }
     });
 }
@@ -513,14 +515,14 @@ async function loadFeedData() {
     try {
         const [users, posts] = await Promise.all([
             fetchUsers(),
-            fetchFeedPosts(currentUser.id),
+            fetchPosts(currentUser.id),
         ]);
 
         allUsers = users;
-        feedPosts = posts;
+        allPosts = posts;
 
         const freshCurrentUser = users.find(function (user) {
-            return user.id === currentUser.id;
+            return Number(user.id) === Number(currentUser.id);
         });
 
         if (freshCurrentUser) {
@@ -531,12 +533,19 @@ async function loadFeedData() {
             welcomeMessage.textContent = "Welcome";
         }
 
+        splitPostsForFeed();
         renderUsers();
-        renderPosts();
+        renderFeedSections();
     } catch (error) {
         console.error("Feed loading error:", error);
-        usersContainer.innerHTML = "<p>Could not load users.</p>";
-        postsContainer.innerHTML = "<p>Could not load posts.</p>";
+
+        if (followingPostsContainer) {
+            followingPostsContainer.innerHTML = "<p>Could not load following posts.</p>";
+        }
+
+        if (explorePostsContainer) {
+            explorePostsContainer.innerHTML = "<p>Could not load explore posts.</p>";
+        }
     }
 }
 
