@@ -1,4 +1,4 @@
-# Plus Social Platform
+# Plus (Social Platform)
 
 ## Description
 A social media web application that allows users to create posts, follow other users, like and comment on posts.
