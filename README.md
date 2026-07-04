@@ -20,9 +20,4 @@ A social media web application that allows users to create posts, follow other u
 - Khalid Al-Fehaida: Sign Up, Login, Feed, Profile
 - Abdullah Alemadi: Posts, Likes, Comments
 - Falah Alahbabi: Follow/Unfollow, Page Integration, UI Improvements
-
-## Run the Project
-```bash
-npm install
-npm run dev
-```
+  
